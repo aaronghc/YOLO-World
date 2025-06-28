@@ -1,0 +1,161 @@
+{
+  "optimization_summary": {
+    "total_loss": -94.24077729177476,
+    "loss_components": {
+      "L_realism": -27.966666469971344,
+      "L_priority": -605.4822164360684,
+      "L_interaction": -36.0,
+      "total": -94.24077729177476
+    },
+    "num_virtual_objects": 5,
+    "num_physical_objects": 10,
+    "exclusivity_enabled": true,
+    "loss_weights": {
+      "w_realism": 1.0,
+      "w_priority": 0.05,
+      "w_interaction": 1.0
+    }
+  },
+  "assignments": [
+    {
+      "virtual_object": {
+        "name": "Treasure Chest",
+        "index": 0,
+        "engagement_level": 3,
+        "involvement_type": "contact",
+        "priority_weight": 3.0
+      },
+      "physical_object": {
+        "name": "black laptop with a logo",
+        "object_id": 2,
+        "image_id": 0,
+        "index": 1
+      },
+      "realism_score": 8.0,
+      "assignment_matrix_row": [
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "virtual_object": {
+        "name": "key",
+        "index": 1,
+        "engagement_level": 4,
+        "involvement_type": "grasp",
+        "priority_weight": 4.0
+      },
+      "physical_object": {
+        "name": "white wireless speaker",
+        "object_id": 4,
+        "image_id": 0,
+        "index": 3
+      },
+      "realism_score": 5.499999970197678,
+      "assignment_matrix_row": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "virtual_object": {
+        "name": "Tomato",
+        "index": 2,
+        "engagement_level": 2,
+        "involvement_type": "substrate",
+        "priority_weight": 2.0
+      },
+      "physical_object": {
+        "name": "blue office chair",
+        "object_id": 6,
+        "image_id": 0,
+        "index": 5
+      },
+      "realism_score": 0.0,
+      "assignment_matrix_row": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "virtual_object": {
+        "name": "Hammer Dispenser 2",
+        "index": 3,
+        "engagement_level": 5,
+        "involvement_type": "grasp",
+        "priority_weight": 5.0
+      },
+      "physical_object": {
+        "name": "silver thermos",
+        "object_id": 5,
+        "image_id": 0,
+        "index": 4
+      },
+      "realism_score": 6.366666634877523,
+      "assignment_matrix_row": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "virtual_object": {
+        "name": "Scarecrow punching bag",
+        "index": 4,
+        "engagement_level": 1,
+        "involvement_type": "contact",
+        "priority_weight": 1.0
+      },
+      "physical_object": {
+        "name": "white mannequin head",
+        "object_id": 9,
+        "image_id": 0,
+        "index": 8
+      },
+      "realism_score": 8.099999864896139,
+      "assignment_matrix_row": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ]
+}
