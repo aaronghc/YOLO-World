@@ -121,26 +121,30 @@ def inference_detector(model,
                                confidence=pred_instances['scores'],
                                mask=masks)
 
-    labels = [
-        f"{texts[class_id][0]} {confidence:0.2f}" for class_id, confidence in
-        zip(detections.class_id, detections.confidence)
-    ]
+    # Handle potential None values for detections attributes
+    if detections.class_id is not None and detections.confidence is not None:
+        labels = [
+            f"{texts[class_id][0]} {confidence:0.2f}" for class_id, confidence in
+            zip(detections.class_id, detections.confidence)
+        ]
+    else:
+        labels = []
 
     # label images
-    image = cv2.imread(image_path)
-    anno_image = image.copy()
-    image = BOUNDING_BOX_ANNOTATOR.annotate(image, detections)
-    image = LABEL_ANNOTATOR.annotate(image, detections, labels=labels)
+    image_data = cv2.imread(image)
+    anno_image = image_data.copy()
+    image_data = BOUNDING_BOX_ANNOTATOR.annotate(image_data, detections)
+    image_data = LABEL_ANNOTATOR.annotate(image_data, detections, labels=labels)
     if masks is not None:
-        image = MASK_ANNOTATOR.annotate(image, detections)
-    cv2.imwrite(osp.join(output_dir, osp.basename(image_path)), image)
+        image_data = MASK_ANNOTATOR.annotate(image_data, detections)
+    cv2.imwrite(osp.join(output_dir, osp.basename(image)), image_data)
 
     if annotation:
         images_dict = {}
         annotations_dict = {}
 
-        images_dict[osp.basename(image_path)] = anno_image
-        annotations_dict[osp.basename(image_path)] = detections
+        images_dict[osp.basename(image)] = anno_image
+        annotations_dict[osp.basename(image)] = detections
 
         ANNOTATIONS_DIRECTORY = os.makedirs(r"./annotations", exist_ok=True)
 
@@ -157,7 +161,7 @@ def inference_detector(model,
                 approximation_percentage=APPROXIMATION_PERCENTAGE)
 
     if show:
-        cv2.imshow('Image', image)  # Provide window name
+        cv2.imshow('Image', image_data)  # Provide window name
         k = cv2.waitKey(0)
         if k == 27:
             # wait for ESC key to exit
@@ -178,10 +182,9 @@ if __name__ == '__main__':
     cfg.load_from = args.checkpoint
     model = init_detector(cfg, checkpoint=args.checkpoint, device=args.device)
 
-    # init test pipeline
-    test_pipeline_cfg = get_test_pipeline_cfg(cfg=cfg)
-    # test_pipeline[0].type = 'mmdet.LoadImageFromNDArray'
-    test_pipeline = Compose(test_pipeline_cfg)
+    # init test pipeline - following video_demo.py pattern
+    model.cfg.test_dataloader.dataset.pipeline[0].type = 'LoadImageFromFile'  # type: ignore
+    test_pipeline = Compose(model.cfg.test_dataloader.dataset.pipeline)  # type: ignore
 
     if args.text.endswith('.txt'):
         with open(args.text) as f:
@@ -204,7 +207,8 @@ if __name__ == '__main__':
         images = [args.image]
 
     # reparameterize texts
-    model.reparameterize(texts)
+    if hasattr(model, 'reparameterize'):
+        model.reparameterize(texts)  # type: ignore
     progress_bar = ProgressBar(len(images))
     for image_path in images:
         inference_detector(model,
