@@ -8,56 +8,62 @@
     },
     {
       "object_id": 2,
-      "object": "black laptop with a logo",
-      "position": "center of the image on the desk",
+      "object": "black gaming monitor",
+      "position": "center left of the image",
       "image_id": 0
     },
     {
       "object_id": 3,
-      "object": "black keyboard",
-      "position": "front of the laptop on the desk",
+      "object": "black laptop with a logo",
+      "position": "center of the image",
       "image_id": 0
     },
     {
       "object_id": 4,
-      "object": "white wireless speaker",
-      "position": "right side of the laptop on the desk",
+      "object": "black keyboard",
+      "position": "center of the image, in front of the laptop",
       "image_id": 0
     },
     {
       "object_id": 5,
-      "object": "silver thermos",
-      "position": "right side of the speaker on the desk",
+      "object": "white wireless speaker",
+      "position": "center right of the image, next to the keyboard",
       "image_id": 0
     },
     {
       "object_id": 6,
+      "object": "silver travel mug",
+      "position": "center right of the image, next to the speaker",
+      "image_id": 0
+    },
+    {
+      "object_id": 7,
       "object": "blue office chair",
       "position": "bottom right of the image",
       "image_id": 0
     },
     {
-      "object_id": 7,
-      "object": "various colored boxes and containers",
-      "position": "background on the right side of the image",
-      "image_id": 0
-    },
-    {
       "object_id": 8,
-      "object": "multiple computer monitors",
-      "position": "background on the left side of the image",
+      "object": "various items on the desk including boxes and bottles",
+      "position": "background of the image, on the desk",
       "image_id": 0
     },
     {
       "object_id": 9,
-      "object": "white mannequin head",
-      "position": "background on the left side of the image",
+      "object": "light green bottle",
+      "position": "background of the image, on the desk",
       "image_id": 0
     },
     {
       "object_id": 10,
-      "object": "cables and wires",
-      "position": "on the floor near the chair",
+      "object": "yellow box",
+      "position": "background of the image, on the desk",
+      "image_id": 0
+    },
+    {
+      "object_id": 11,
+      "object": "white paper",
+      "position": "background of the image, on the desk",
       "image_id": 0
     }
   ]

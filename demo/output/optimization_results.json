@@ -1,19 +1,19 @@
 {
   "optimization_summary": {
-    "total_loss": -94.24077729177476,
+    "total_loss": -47.539566445065205,
     "loss_components": {
-      "L_realism": -27.966666469971344,
-      "L_priority": -605.4822164360684,
-      "L_interaction": -36.0,
-      "total": -94.24077729177476
+      "L_realism": -24.199999819199242,
+      "L_priority": -433.9566625865963,
+      "L_interaction": -38.0,
+      "total": -47.539566445065205
     },
     "num_virtual_objects": 5,
-    "num_physical_objects": 10,
+    "num_physical_objects": 11,
     "exclusivity_enabled": true,
     "loss_weights": {
       "w_realism": 1.0,
-      "w_priority": 0.05,
-      "w_interaction": 1.0
+      "w_priority": 0.01,
+      "w_interaction": 0.5
     }
   },
   "assignments": [
@@ -27,12 +27,13 @@
       },
       "physical_object": {
         "name": "black laptop with a logo",
-        "object_id": 2,
+        "object_id": 3,
         "image_id": 0,
-        "index": 1
+        "index": 2
       },
-      "realism_score": 8.0,
+      "realism_score": 8.166666666666666,
       "assignment_matrix_row": [
+        0.0,
         0.0,
         1.0,
         0.0,
@@ -54,21 +55,22 @@
         "priority_weight": 4.0
       },
       "physical_object": {
-        "name": "white wireless speaker",
-        "object_id": 4,
+        "name": "light green bottle",
+        "object_id": 9,
         "image_id": 0,
-        "index": 3
+        "index": 8
       },
-      "realism_score": 5.499999970197678,
+      "realism_score": 5.099999964237213,
       "assignment_matrix_row": [
         0.0,
         0.0,
         0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         1.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
         0.0,
         0.0
       ]
@@ -82,10 +84,10 @@
         "priority_weight": 2.0
       },
       "physical_object": {
-        "name": "blue office chair",
-        "object_id": 6,
+        "name": "various items on the desk including boxes and bottles",
+        "object_id": 8,
         "image_id": 0,
-        "index": 5
+        "index": 7
       },
       "realism_score": 0.0,
       "assignment_matrix_row": [
@@ -94,8 +96,9 @@
         0.0,
         0.0,
         0.0,
-        1.0,
         0.0,
+        0.0,
+        1.0,
         0.0,
         0.0,
         0.0
@@ -110,18 +113,19 @@
         "priority_weight": 5.0
       },
       "physical_object": {
-        "name": "silver thermos",
-        "object_id": 5,
+        "name": "black gaming monitor",
+        "object_id": 2,
         "image_id": 0,
-        "index": 4
+        "index": 1
       },
-      "realism_score": 6.366666634877523,
+      "realism_score": 3.766666640837987,
       "assignment_matrix_row": [
         0.0,
-        0.0,
-        0.0,
-        0.0,
         1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -138,13 +142,14 @@
         "priority_weight": 1.0
       },
       "physical_object": {
-        "name": "white mannequin head",
-        "object_id": 9,
+        "name": "yellow box",
+        "object_id": 10,
         "image_id": 0,
-        "index": 8
+        "index": 9
       },
-      "realism_score": 8.099999864896139,
+      "realism_score": 7.1666665474573765,
       "assignment_matrix_row": [
+        0.0,
         0.0,
         0.0,
         0.0,

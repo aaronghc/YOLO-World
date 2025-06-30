@@ -685,7 +685,7 @@ def main():
     # Set loss function weights (can be adjusted)
     optimizer.w_realism = 1.0
     optimizer.w_priority = 0.05
-    optimizer.w_interaction = 1.0
+    optimizer.w_interaction = 0.5
     
     # Enable/disable exclusivity constraint
     optimizer.enable_exclusivity = True
