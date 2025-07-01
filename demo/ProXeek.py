@@ -44,8 +44,8 @@ RELATIONSHIP_RATING_BATCH_SIZE = 5  # Number of tasks per batch
 RELATIONSHIP_RATING_BATCH_INTERVAL = 1  # Seconds between starting new batches
 
 # Process Activation Switches
-ENABLE_RELATIONSHIP_RATING = False   # Set to True to enable relationship rating, False for greeting test
-ENABLE_GREETING_TEST = False        # Set to True to enable greeting test, False for relationship rating
+ENABLE_PROXY_MATCHING = False        # Set to True to enable proxy matching and dependent processes
+ENABLE_RELATIONSHIP_RATING = True   # Set to True to enable relationship rating
 
 # =============================================================================
 
@@ -401,13 +401,7 @@ substrate_utilization_llm = ChatOpenAI(
     api_key=SecretStr(api_key) if api_key else None
 )
 
-# Initialize the greeting test LLM
-greeting_test_llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.1,
-    base_url="https://api.nuwaapi.com/v1",
-    api_key=SecretStr(api_key) if api_key else None
-)
+
 
 # YOLO-World configuration
 YOLO_CONFIG_PATH = os.path.join(os.path.dirname(script_dir), "configs/pretrain/yolo_world_v2_l_vlpan_bn_2e-3_100e_4x8gpus_obj365v1_goldg_train_lvis_minival.py")
@@ -2845,8 +2839,8 @@ async def run_concurrent_tasks():
             log(f"Error in YOLO-World enhancement: {e}")
             log("Continuing with original object database without bounding boxes")
     
-    # Run proxy matching if both physical and virtual objects are available
-    if environment_image_base64_list and haptic_annotation_json:
+    # Run proxy matching if both physical and virtual objects are available and proxy matching is enabled
+    if environment_image_base64_list and haptic_annotation_json and ENABLE_PROXY_MATCHING:
         log("Setting up proxy matching task")
         
         # Run proxy matching
@@ -2871,8 +2865,8 @@ async def run_concurrent_tasks():
         else:
             log("Warning: No proxy matching results available!")
         
-        # Run substrate utilization first, then property rating and greeting test concurrently
-        log("Starting sequential execution: substrate utilization first, then property rating + greeting test concurrently")
+        # Run substrate utilization first, then property rating and relationship rating concurrently
+        log("Starting sequential execution: substrate utilization first, then property rating + relationship rating concurrently")
         
         # Step 1: Run substrate utilization first
         log("Step 1: Starting substrate utilization")
@@ -2890,7 +2884,7 @@ async def run_concurrent_tasks():
             log(f"Step 1 error: Substrate utilization failed: {e}")
             substrate_utilization_results = []
         
-        # Step 2: Run property rating and either relationship rating or greeting test concurrently after substrate utilization completes
+        # Step 2: Run property rating and relationship rating concurrently after substrate utilization completes
         if ENABLE_RELATIONSHIP_RATING:
             log("Step 2: Starting property rating and relationship rating concurrently (after substrate utilization completion)")
             
@@ -2932,65 +2926,16 @@ async def run_concurrent_tasks():
                 else:
                     relationship_rating_results = concurrent_results[1]
                     log(f"Step 2 complete: Relationship rating finished with {len(relationship_rating_results) if isinstance(relationship_rating_results, (list, tuple)) else 0} results")
-                
-                # Set greeting test results as empty since relationship rating is enabled
-                greeting_test_results = []
                     
             except Exception as e:
                 log(f"Step 2 error: Concurrent execution failed: {e}")
                 property_rating_results = []
                 relationship_rating_results = []
-                greeting_test_results = []
             
             log("Sequential execution complete: substrate utilization first, then property rating + relationship rating concurrent")
             
-        elif ENABLE_GREETING_TEST:
-            log("Step 2: Starting property rating and greeting test concurrently (after substrate utilization completion)")
-            
-            # Create tasks for concurrent execution
-            property_task = run_property_ratings(
-                enhanced_virtual_objects,
-                environment_image_base64_list,
-                physical_object_database,
-                object_snapshot_map,
-                proxy_matching_results
-            )
-            
-            greeting_task = run_simple_greeting_test()
-            
-            # Run both tasks concurrently using asyncio.gather()
-            try:
-                concurrent_results = await asyncio.gather(property_task, greeting_task, return_exceptions=True)
-                
-                # Process property rating result (first result)
-                if isinstance(concurrent_results[0], Exception):
-                    log(f"Step 2 error: Property rating failed: {concurrent_results[0]}")
-                    property_rating_results = []
-                else:
-                    property_rating_results = concurrent_results[0]
-                    log(f"Step 2 complete: Property rating finished with {len(property_rating_results) if isinstance(property_rating_results, (list, tuple)) else 0} results")
-                
-                # Process greeting test result (second result)
-                if isinstance(concurrent_results[1], Exception):
-                    log(f"Step 2 error: Greeting test failed: {concurrent_results[1]}")
-                    greeting_test_results = []
-                else:
-                    greeting_test_results = concurrent_results[1]
-                    log(f"Step 2 complete: Greeting test finished with {len(greeting_test_results) if isinstance(greeting_test_results, (list, tuple)) else 0} results")
-                
-                # Set relationship rating results as empty since greeting test is enabled
-                relationship_rating_results = []
-                    
-            except Exception as e:
-                log(f"Step 2 error: Concurrent execution failed: {e}")
-                property_rating_results = []
-                greeting_test_results = []
-                relationship_rating_results = []
-            
-            log("Sequential execution complete: substrate utilization first, then property rating + greeting test concurrent")
-            
         else:
-            log("Step 2: Only running property rating (both relationship rating and greeting test disabled)")
+            log("Step 2: Only running property rating (relationship rating disabled)")
             
             # Run only property rating
             try:
@@ -3004,22 +2949,32 @@ async def run_concurrent_tasks():
                 log(f"Step 2 complete: Property rating finished with {len(property_rating_results) if isinstance(property_rating_results, (list, tuple)) else 0} results")
                 
                 # Set other results as empty
-                greeting_test_results = []
                 relationship_rating_results = []
                 
             except Exception as e:
                 log(f"Step 2 error: Property rating failed: {e}")
                 property_rating_results = []
-                greeting_test_results = []
                 relationship_rating_results = []
             
             log("Sequential execution complete: substrate utilization first, then property rating only")
         
         # Add to results
         results["property_rating_result"] = property_rating_results
-        results["greeting_test_result"] = greeting_test_results
         results["relationship_rating_result"] = relationship_rating_results
         results["substrate_utilization_result"] = substrate_utilization_results
+    
+    else:
+        # Proxy matching is disabled or data is not available
+        if not ENABLE_PROXY_MATCHING:
+            log("Proxy matching disabled via configuration - skipping proxy matching and all dependent processes")
+        else:
+            log("No environment images or haptic annotation data available - skipping proxy matching and dependent processes")
+        
+        # Set empty results for all proxy matching dependent processes
+        results["proxy_matching_result"] = []
+        results["property_rating_result"] = []
+        results["relationship_rating_result"] = []
+        results["substrate_utilization_result"] = []
     
     # Store the enhanced physical object database in results
     results["enhanced_physical_result"] = physical_object_database
@@ -3795,68 +3750,7 @@ async def run_substrate_utilization_methods(haptic_annotation_json, environment_
         log(traceback.format_exc())
         return []
 
-# Simple test function to replace relationship rating for debugging LangSmith tracing
-@traceable(run_type="chain", metadata={"process": "greeting_test"})
-async def run_simple_greeting_test():
-    """Send a few simple concurrent greeting queries to test LangSmith tracing"""
-    log("Starting simple greeting test with few concurrent queries")
-    
-    # Create simple greeting tasks
-    @traceable(run_type="llm", metadata={"process": "greeting_individual"})
-    async def send_greeting(greeting_id):
-        try:
-            log(f"Sending greeting {greeting_id}")
-            messages = [
-                SystemMessage(content="You are a friendly assistant. Respond with a brief greeting."),
-                HumanMessage(content=f"Hello! This is test greeting number {greeting_id}.")
-            ]
-            
-            # LangChain ChatOpenAI has built-in LangSmith tracing - no extra config needed
-            response = await greeting_test_llm.ainvoke(messages)
-            response_text = extract_response_text(response.content)
-            
-            log(f"Received greeting response {greeting_id}: {response_text[:50]}...")
-            
-            return {
-                "greeting_id": greeting_id,
-                "response": response_text,
-                "status": "success"
-            }
-            
-        except Exception as e:
-            log(f"Error in greeting {greeting_id}: {e}")
-            return {
-                "greeting_id": greeting_id,
-                "error": str(e),
-                "status": "error"
-            }
-    
-    # Create just 5 simple concurrent tasks (much fewer than relationship rating)
-    tasks = []
-    for i in range(1, 6):  # Just 5 greetings
-        task = send_greeting(i)
-        tasks.append(task)
-    
-    log(f"Running {len(tasks)} simple greeting tasks concurrently with asyncio.gather")
-    
-    # Use the same pattern as working processes
-    task_results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Process results
-    greeting_results = []
-    for i, result in enumerate(task_results):
-        if isinstance(result, Exception):
-            log(f"Error in greeting task {i}: {result}")
-            greeting_results.append({
-                "greeting_id": i + 1,
-                "error": str(result),
-                "status": "error"
-            })
-        else:
-            greeting_results.append(result)
-    
-    log(f"Completed simple greeting test with {len(greeting_results)} results")
-    return greeting_results
+
 
 def correct_object_ids_in_relationship_results(relationship_results, physical_object_database):
     """
@@ -4033,7 +3927,7 @@ try:
         result["virtual_objects"] = {"status": "error", "message": "No haptic annotation data provided"}
     
     # Process proxy matching results if available
-    if environment_image_base64_list and haptic_annotation_json:
+    if environment_image_base64_list and haptic_annotation_json and ENABLE_PROXY_MATCHING:
         log("Processing completed proxy matching results")
         proxy_matching_results = concurrent_results.get("proxy_matching_result", [])
         
@@ -4059,9 +3953,24 @@ try:
             "database_path": proxy_output_path,
             "matching_results": proxy_matching_results
         }
+    else:
+        # Handle disabled or unavailable proxy matching
+        if not ENABLE_PROXY_MATCHING:
+            log("Proxy matching disabled via configuration")
+            status_message = "Proxy matching disabled via configuration"
+        else:
+            log("No data available for proxy matching")
+            status_message = "No environment images or haptic annotation data provided"
+        
+        result["proxy_matching"] = {
+            "status": "disabled" if not ENABLE_PROXY_MATCHING else "no_data",
+            "message": status_message,
+            "count": 0,
+            "matching_results": []
+        }
     
     # Process property rating results if available
-    if environment_image_base64_list and haptic_annotation_json:
+    if environment_image_base64_list and haptic_annotation_json and ENABLE_PROXY_MATCHING:
         log("Processing completed property rating results")
         property_rating_results = concurrent_results.get("property_rating_result", [])
         
@@ -4095,45 +4004,26 @@ try:
             "database_path": property_rating_output_path,
             "rating_results": property_rating_results
         }
-    
-    # Process greeting test results if available
-    if environment_image_base64_list and haptic_annotation_json and ENABLE_GREETING_TEST:
-        log("Processing completed greeting test results")
-        greeting_test_results = concurrent_results.get("greeting_test_result", [])
-        
-        # Save greeting test results
-        output_dir = os.path.join(script_dir, "output")
-        greeting_test_output_path = os.path.join(output_dir, "greeting_test_results.json")
-        
-        # Ensure output directory exists
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Save greeting test results
-        with open(greeting_test_output_path, 'w') as f:
-            json.dump(greeting_test_results, f, indent=2)
-        
-        log(f"Greeting test complete. Generated {len(greeting_test_results)} greeting responses.")
-        
-        # Add to result
-        result["greeting_test"] = {
-            "count": len(greeting_test_results),
-            "database_path": greeting_test_output_path,
-            "test_results": greeting_test_results
-        }
     else:
-        if not ENABLE_GREETING_TEST:
-            log("Greeting test disabled via configuration")
+        # Handle disabled or unavailable property rating
+        if not ENABLE_PROXY_MATCHING:
+            log("Property rating skipped - proxy matching disabled via configuration")
+            status_message = "Property rating skipped - proxy matching disabled via configuration"
         else:
-            log("No data available for greeting test")
-        result["greeting_test"] = {
-            "status": "disabled" if not ENABLE_GREETING_TEST else "no_data", 
-            "message": "Greeting test disabled via configuration" if not ENABLE_GREETING_TEST else "No environment images or haptic annotation data provided",
+            log("No data available for property rating")
+            status_message = "No environment images or haptic annotation data provided"
+        
+        result["property_rating"] = {
+            "status": "disabled" if not ENABLE_PROXY_MATCHING else "no_data",
+            "message": status_message,
             "count": 0,
-            "test_results": []
+            "rating_results": []
         }
+    
+
     
     # Process relationship rating results if available
-    if environment_image_base64_list and haptic_annotation_json and ENABLE_RELATIONSHIP_RATING:
+    if environment_image_base64_list and haptic_annotation_json and ENABLE_PROXY_MATCHING and ENABLE_RELATIONSHIP_RATING:
         log("Processing completed relationship rating results")
         relationship_rating_results = concurrent_results.get("relationship_rating_result", [])
         
@@ -4239,19 +4129,28 @@ try:
             }
         }
     else:
-        if not ENABLE_RELATIONSHIP_RATING:
+        if not ENABLE_PROXY_MATCHING:
+            log("Relationship rating skipped - proxy matching disabled via configuration")
+            status_message = "Relationship rating skipped - proxy matching disabled via configuration"
+            status = "proxy_disabled"
+        elif not ENABLE_RELATIONSHIP_RATING:
             log("Relationship rating disabled via configuration")
+            status_message = "Relationship rating disabled via configuration"
+            status = "disabled"
         else:
             log("No data available for relationship rating")
+            status_message = "No environment images or haptic annotation data provided"
+            status = "no_data"
+        
         result["relationship_rating"] = {
-            "status": "disabled" if not ENABLE_RELATIONSHIP_RATING else "no_data", 
-            "message": "Relationship rating disabled via configuration" if not ENABLE_RELATIONSHIP_RATING else "No environment images or haptic annotation data provided",
+            "status": status,
+            "message": status_message,
             "count": 0,
             "rating_results": []
         }
     
     # Process substrate utilization results if available
-    if environment_image_base64_list and haptic_annotation_json:
+    if environment_image_base64_list and haptic_annotation_json and ENABLE_PROXY_MATCHING:
         log("Processing completed substrate utilization results")
         substrate_utilization_results = concurrent_results.get("substrate_utilization_result", [])
         
@@ -4282,6 +4181,21 @@ try:
             "count": len(substrate_utilization_results),
             "database_path": substrate_utilization_output_path,
             "utilization_results": substrate_utilization_results
+        }
+    else:
+        # Handle disabled or unavailable substrate utilization
+        if not ENABLE_PROXY_MATCHING:
+            log("Substrate utilization skipped - proxy matching disabled via configuration")
+            status_message = "Substrate utilization skipped - proxy matching disabled via configuration"
+        else:
+            log("No data available for substrate utilization")
+            status_message = "No environment images or haptic annotation data provided"
+        
+        result["substrate_utilization"] = {
+            "status": "disabled" if not ENABLE_PROXY_MATCHING else "no_data",
+            "message": status_message,
+            "count": 0,
+            "utilization_results": []
         }
     
     # Print final result as JSON
