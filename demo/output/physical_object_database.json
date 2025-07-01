@@ -2,69 +2,279 @@
   "0": [
     {
       "object_id": 1,
-      "object": "black gaming monitor",
-      "position": "left side of the image",
-      "image_id": 0
+      "object": "black mechanical keyboard",
+      "position": "bottom left of the image",
+      "image_id": 0,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 0.137359619140625,
+          "y1": 679.7239990234375,
+          "x2": 412.69537353515625,
+          "y2": 957.785888671875,
+          "width": 412.5580139160156,
+          "height": 278.0618896484375,
+          "center_x": 206.41636657714844,
+          "center_y": 818.7549438476562
+        },
+        "confidence": 0.8583348989486694,
+        "detected_name": "black mechanical keyboard"
+      }
     },
     {
       "object_id": 2,
-      "object": "black gaming monitor",
-      "position": "center left of the image",
-      "image_id": 0
+      "object": "black computer mouse",
+      "position": "bottom center of the image",
+      "image_id": 0,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 549.2685546875,
+          "y1": 756.872314453125,
+          "x2": 721.1856689453125,
+          "y2": 935.289306640625,
+          "width": 171.9171142578125,
+          "height": 178.4169921875,
+          "center_x": 635.2271118164062,
+          "center_y": 846.080810546875
+        },
+        "confidence": 0.6860743761062622,
+        "detected_name": "black computer mouse"
+      }
     },
     {
       "object_id": 3,
-      "object": "black laptop with a logo",
-      "position": "center of the image",
-      "image_id": 0
+      "object": "white notebook with spiral binding",
+      "position": "bottom left of the image, next to the keyboard",
+      "image_id": 0,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 149.28285217285156,
+          "y1": 861.2025146484375,
+          "x2": 451.35107421875,
+          "y2": 957.7471923828125,
+          "width": 302.0682373046875,
+          "height": 96.544677734375,
+          "center_x": 300.31695556640625,
+          "center_y": 909.474853515625
+        },
+        "confidence": 0.4464089572429657,
+        "detected_name": "white notebook with spiral binding"
+      }
     },
     {
       "object_id": 4,
-      "object": "black keyboard",
-      "position": "center of the image, in front of the laptop",
-      "image_id": 0
+      "object": "silver insulated water bottle with a white design",
+      "position": "bottom right of the image",
+      "image_id": 0,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 1014.45947265625,
+          "y1": 379.4833984375,
+          "x2": 1236.98486328125,
+          "y2": 783.3087768554688,
+          "width": 222.525390625,
+          "height": 403.82537841796875,
+          "center_x": 1125.72216796875,
+          "center_y": 581.3961181640625
+        },
+        "confidence": 0.4675406515598297,
+        "detected_name": "silver insulated water bottle with a white design"
+      }
     },
     {
       "object_id": 5,
-      "object": "white wireless speaker",
-      "position": "center right of the image, next to the keyboard",
-      "image_id": 0
+      "object": "two computer monitors (one on the left and one on the right)",
+      "position": "center of the image",
+      "image_id": 0,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 0.22943115234375,
+          "y1": 18.1458740234375,
+          "x2": 1237.350830078125,
+          "y2": 619.099609375,
+          "width": 1237.121337890625,
+          "height": 600.9537353515625,
+          "center_x": 618.7901611328125,
+          "center_y": 318.62274169921875
+        },
+        "confidence": 0.5788899660110474,
+        "detected_name": "two computer monitors"
+      }
     },
     {
       "object_id": 6,
-      "object": "silver travel mug",
-      "position": "center right of the image, next to the speaker",
-      "image_id": 0
+      "object": "various open application windows on the monitors",
+      "position": "on the screens of the monitors",
+      "image_id": 0,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 0.0,
+          "y1": 26.461273193359375,
+          "x2": 333.5056457519531,
+          "y2": 615.6405029296875,
+          "width": 333.5056457519531,
+          "height": 589.17919921875,
+          "center_x": 166.75282287597656,
+          "center_y": 321.0509033203125
+        },
+        "confidence": 0.9117235541343689,
+        "detected_name": "various open application windows on the monitors"
+      }
     },
     {
       "object_id": 7,
-      "object": "blue office chair",
-      "position": "bottom right of the image",
-      "image_id": 0
+      "object": "yellow sticky notes",
+      "position": "partially visible on the desk, near the keyboard",
+      "image_id": 0,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 51.285423278808594,
+          "y1": 620.62255859375,
+          "x2": 127.54312133789062,
+          "y2": 771.0651245117188,
+          "width": 76.25769805908203,
+          "height": 150.44256591796875,
+          "center_x": 89.41427612304688,
+          "center_y": 695.8438720703125
+        },
+        "confidence": 0.32738474011421204,
+        "detected_name": "yellow sticky notes"
+      }
     },
     {
       "object_id": 8,
-      "object": "various items on the desk including boxes and bottles",
-      "position": "background of the image, on the desk",
-      "image_id": 0
+      "object": "black flashlight",
+      "position": "center right of the image, next to the water bottle",
+      "image_id": 0,
+      "yolo_detection": null
     },
     {
       "object_id": 9,
-      "object": "light green bottle",
-      "position": "background of the image, on the desk",
-      "image_id": 0
+      "object": "cables and wires",
+      "position": "scattered on the desk, partially visible",
+      "image_id": 0,
+      "yolo_detection": null
+    }
+  ],
+  "1": [
+    {
+      "object_id": 1,
+      "object": "blue office chair with armrests",
+      "position": "center left of the image",
+      "image_id": 1,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 45.851776123046875,
+          "y1": 20.292205810546875,
+          "x2": 815.0455322265625,
+          "y2": 951.851318359375,
+          "width": 769.1937255859375,
+          "height": 931.55908203125,
+          "center_x": 430.44866943359375,
+          "center_y": 486.07177734375
+        },
+        "confidence": 0.9720744490623474,
+        "detected_name": "blue office chair with armrests"
+      }
     },
     {
-      "object_id": 10,
-      "object": "yellow box",
-      "position": "background of the image, on the desk",
-      "image_id": 0
+      "object_id": 2,
+      "object": "black computer desk",
+      "position": "top right of the image",
+      "image_id": 1,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 339.0277099609375,
+          "y1": 0.0,
+          "x2": 1119.0220947265625,
+          "y2": 378.57647705078125,
+          "width": 779.994384765625,
+          "height": 378.57647705078125,
+          "center_x": 729.02490234375,
+          "center_y": 189.28823852539062
+        },
+        "confidence": 0.38578787446022034,
+        "detected_name": "black computer desk"
+      }
     },
     {
-      "object_id": 11,
-      "object": "white paper",
-      "position": "background of the image, on the desk",
-      "image_id": 0
+      "object_id": 3,
+      "object": "black computer tower",
+      "position": "top right of the image, next to the desk",
+      "image_id": 1,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 785.934326171875,
+          "y1": 72.70849609375,
+          "x2": 983.2394409179688,
+          "y2": 319.9291687011719,
+          "width": 197.30511474609375,
+          "height": 247.22067260742188,
+          "center_x": 884.5869140625,
+          "center_y": 196.31883239746094
+        },
+        "confidence": 0.8427822589874268,
+        "detected_name": "black computer tower"
+      }
+    },
+    {
+      "object_id": 4,
+      "object": "cardboard boxes with labels",
+      "position": "bottom right of the image",
+      "image_id": 1,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 971.78564453125,
+          "y1": 36.466827392578125,
+          "x2": 1128.666748046875,
+          "y2": 316.8095703125,
+          "width": 156.881103515625,
+          "height": 280.3427429199219,
+          "center_x": 1050.2261962890625,
+          "center_y": 176.63819885253906
+        },
+        "confidence": 0.3470321297645569,
+        "detected_name": "cardboard boxes with labels"
+      }
+    },
+    {
+      "object_id": 5,
+      "object": "black cables on the floor",
+      "position": "bottom left of the image",
+      "image_id": 1,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 2.0599365234375,
+          "y1": 43.385986328125,
+          "x2": 1278.730712890625,
+          "y2": 954.80126953125,
+          "width": 1276.6707763671875,
+          "height": 911.415283203125,
+          "center_x": 640.3953247070312,
+          "center_y": 499.0936279296875
+        },
+        "confidence": 0.5530710816383362,
+        "detected_name": "black cables on the floor"
+      }
+    },
+    {
+      "object_id": 6,
+      "object": "gray tiled floor",
+      "position": "entire bottom area of the image",
+      "image_id": 1,
+      "yolo_detection": {
+        "bbox": {
+          "x1": 2.0599365234375,
+          "y1": 43.385986328125,
+          "x2": 1278.730712890625,
+          "y2": 954.80126953125,
+          "width": 1276.6707763671875,
+          "height": 911.415283203125,
+          "center_x": 640.3953247070312,
+          "center_y": 499.0936279296875
+        },
+        "confidence": 0.4068053662776947,
+        "detected_name": "gray tiled floor"
+      }
     }
   ]
 }

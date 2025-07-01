@@ -15,6 +15,18 @@ from langsmith.wrappers import wrap_openai
 import uuid
 import difflib
 
+# Add YOLO-World imports
+import torch
+import cv2
+import numpy as np
+from mmengine.config import Config
+from mmengine.runner.amp import autocast
+from mmengine.dataset import Compose
+from mmdet.apis import init_detector
+from mmdet.utils import get_test_pipeline_cfg
+import supervision as sv
+import tempfile
+
 # =============================================================================
 # CONFIGURATION PARAMETERS - Easy to find and modify
 # =============================================================================
@@ -32,7 +44,7 @@ RELATIONSHIP_RATING_BATCH_SIZE = 5  # Number of tasks per batch
 RELATIONSHIP_RATING_BATCH_INTERVAL = 1  # Seconds between starting new batches
 
 # Process Activation Switches
-ENABLE_RELATIONSHIP_RATING = True   # Set to True to enable relationship rating, False for greeting test
+ENABLE_RELATIONSHIP_RATING = False   # Set to True to enable relationship rating, False for greeting test
 ENABLE_GREETING_TEST = False        # Set to True to enable greeting test, False for relationship rating
 
 # =============================================================================
@@ -98,6 +110,149 @@ async def retry_with_backoff(async_func, max_retries=3, base_delay=1.0, backoff_
     
     # This should never be reached, but just in case
     raise Exception("Max retries exceeded")
+
+# Function to initialize YOLO-World model
+def initialize_yolo_model():
+    """Initialize YOLO-World model for bounding box detection"""
+    global yolo_model, yolo_test_pipeline
+    
+    if yolo_model is not None:
+        return yolo_model, yolo_test_pipeline
+    
+    try:
+        log("Initializing YOLO-World model...")
+        
+        # Check if config and weights files exist
+        if not os.path.exists(YOLO_CONFIG_PATH):
+            log(f"Error: YOLO config file not found at {YOLO_CONFIG_PATH}")
+            return None, None
+        
+        if not os.path.exists(YOLO_WEIGHTS_PATH):
+            log(f"Error: YOLO weights file not found at {YOLO_WEIGHTS_PATH}")
+            return None, None
+        
+        # Change to project root directory for proper relative path resolution
+        original_cwd = os.getcwd()
+        project_root = os.path.dirname(script_dir)
+        os.chdir(project_root)
+        
+        try:
+            # Load config (following image_demo.py pattern exactly)
+            cfg = Config.fromfile(YOLO_CONFIG_PATH)
+            cfg.work_dir = os.path.join('./work_dirs', os.path.splitext(os.path.basename(YOLO_CONFIG_PATH))[0])
+            
+            # Initialize model
+            cfg.load_from = YOLO_WEIGHTS_PATH
+            yolo_model = init_detector(cfg, checkpoint=YOLO_WEIGHTS_PATH, device=YOLO_DEVICE)
+        finally:
+            # Restore original working directory
+            os.chdir(original_cwd)
+        
+        # Initialize test pipeline
+        # Access the config attributes properly
+        test_cfg = yolo_model.cfg
+        test_cfg.test_dataloader.dataset.pipeline[0].type = 'LoadImageFromFile'  # type: ignore
+        yolo_test_pipeline = Compose(test_cfg.test_dataloader.dataset.pipeline)  # type: ignore
+        
+        log(f"YOLO-World model initialized successfully on device: {YOLO_DEVICE}")
+        return yolo_model, yolo_test_pipeline
+        
+    except Exception as e:
+        log(f"Error initializing YOLO-World model: {e}")
+        return None, None
+
+# Function to run YOLO-World detection on an image
+def run_yolo_detection(image_base64: str, object_names: List[str], image_id: int) -> List[Dict]:
+    """Run YOLO-World detection on an image with specified object names"""
+    try:
+        # Initialize model if needed
+        model, test_pipeline = initialize_yolo_model()
+        if model is None or test_pipeline is None:
+            log(f"YOLO model not available for image {image_id}")
+            return []
+        
+        # Convert base64 to temporary image file
+        image_data = base64.b64decode(image_base64)
+        temp_image_path = None
+        
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
+            temp_image_path = temp_file.name
+            temp_file.write(image_data)
+        
+        try:
+            # Prepare text prompts - format as expected by YOLO-World
+            texts = [[name.strip()] for name in object_names] + [[' ']]  # Add empty text as per image_demo.py
+            
+            # Reparameterize model for the new text prompts
+            if hasattr(model, 'reparameterize'):
+                model.reparameterize(texts)  # type: ignore
+            
+            # Prepare data
+            data_info = dict(img_id=0, img_path=temp_image_path, texts=texts)
+            data_info = test_pipeline(data_info)  # type: ignore
+            
+            # Check if pipeline succeeded
+            if data_info is None or 'inputs' not in data_info or 'data_samples' not in data_info:
+                log(f"Test pipeline failed for image {image_id}")
+                return []
+                
+            data_batch = dict(inputs=data_info['inputs'].unsqueeze(0),
+                            data_samples=[data_info['data_samples']])
+            
+            # Run inference
+            with autocast(enabled=False), torch.no_grad():
+                output = model.test_step(data_batch)[0]  # type: ignore
+                pred_instances = output.pred_instances
+                pred_instances = pred_instances[pred_instances.scores.float() > YOLO_THRESHOLD]
+            
+            # Keep only top-k predictions
+            if len(pred_instances.scores) > YOLO_TOPK:
+                indices = pred_instances.scores.float().topk(YOLO_TOPK)[1]
+                pred_instances = pred_instances[indices]
+            
+            # Convert to numpy for easier processing
+            pred_instances = pred_instances.cpu().numpy()  # type: ignore
+            
+            # Extract bounding boxes and other info
+            detections = []
+            if len(pred_instances['bboxes']) > 0:  # type: ignore
+                for i in range(len(pred_instances['bboxes'])):  # type: ignore
+                    bbox = pred_instances['bboxes'][i]  # [x1, y1, x2, y2] # type: ignore
+                    class_id = pred_instances['labels'][i]  # type: ignore
+                    confidence = pred_instances['scores'][i]  # type: ignore
+                    
+                    # Get the detected object name
+                    detected_object_name = texts[class_id][0] if class_id < len(texts) else "unknown"
+                    
+                    detection = {
+                        "bbox": {
+                            "x1": float(bbox[0]),
+                            "y1": float(bbox[1]), 
+                            "x2": float(bbox[2]),
+                            "y2": float(bbox[3]),
+                            "width": float(bbox[2] - bbox[0]),
+                            "height": float(bbox[3] - bbox[1]),
+                            "center_x": float((bbox[0] + bbox[2]) / 2),
+                            "center_y": float((bbox[1] + bbox[3]) / 2)
+                        },
+                        "detected_object_name": detected_object_name,
+                        "confidence": float(confidence),
+                        "class_id": int(class_id),
+                        "image_id": image_id
+                    }
+                    detections.append(detection)
+            
+            log(f"YOLO detection completed for image {image_id}: found {len(detections)} objects")
+            return detections
+            
+        finally:
+            # Clean up temporary file
+            if temp_image_path and os.path.exists(temp_image_path):
+                os.unlink(temp_image_path)
+                
+    except Exception as e:
+        log(f"Error in YOLO detection for image {image_id}: {e}")
+        return []
 
 # Check if we're running from Unity or from the server
 if len(sys.argv) > 1:
@@ -253,6 +408,17 @@ greeting_test_llm = ChatOpenAI(
     base_url="https://api.nuwaapi.com/v1",
     api_key=SecretStr(api_key) if api_key else None
 )
+
+# YOLO-World configuration
+YOLO_CONFIG_PATH = os.path.join(os.path.dirname(script_dir), "configs/pretrain/yolo_world_v2_l_vlpan_bn_2e-3_100e_4x8gpus_obj365v1_goldg_train_lvis_minival.py")
+YOLO_WEIGHTS_PATH = os.path.join(os.path.dirname(script_dir), "weights/l_stage2-b3e3dc3f.pth")
+YOLO_DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+YOLO_THRESHOLD = 0.05
+YOLO_TOPK = 100
+
+# Initialize YOLO-World model (will be done lazily when needed)
+yolo_model = None
+yolo_test_pipeline = None
 
 # System prompt for object recognition
 object_recognition_system_prompt = """
@@ -736,6 +902,179 @@ async def process_multiple_images(environment_images: List[str]) -> Dict[int, Li
             object_database[image_id] = []
             
     return object_database
+
+# Function to enhance physical object database with YOLO-World bounding boxes
+@traceable(run_type="chain", metadata={"process": "yolo_bounding_box_enhancement"})
+async def enhance_with_yolo_bboxes(object_database: Dict[int, List[Dict]], environment_images: List[str]) -> Dict[int, List[Dict]]:
+    """Enhance the physical object database with YOLO-World bounding box detections"""
+    log("Starting YOLO-World bounding box enhancement...")
+    
+    enhanced_database = {}
+    
+    for image_id, objects in object_database.items():
+        log(f"Processing YOLO detection for image {image_id} with {len(objects)} objects")
+        
+        if len(objects) == 0:
+            enhanced_database[image_id] = objects
+            continue
+        
+        # Extract object names for YOLO detection
+        object_names = []
+        for obj in objects:
+            # Extract the main object name (before parentheses if any)
+            object_name = obj.get("object", "").split("(")[0].strip()
+            if object_name:
+                object_names.append(object_name)
+        
+        # Remove duplicates while preserving order
+        unique_names = []
+        seen = set()
+        for name in object_names:
+            if name not in seen:
+                unique_names.append(name)
+                seen.add(name)
+        
+        log(f"Running YOLO detection on image {image_id} for objects: {unique_names}")
+        
+        # Run YOLO detection
+        try:
+            image_base64 = environment_images[image_id]
+            yolo_detections = run_yolo_detection(image_base64, unique_names, image_id)
+            
+            # Match YOLO detections to LLM-identified objects
+            enhanced_objects = []
+            for obj in objects:
+                enhanced_obj = obj.copy()
+                
+                # Try to find matching YOLO detection
+                obj_name = obj.get("object", "").split("(")[0].strip().lower()
+                best_match = None
+                best_confidence = 0.0
+                
+                for detection in yolo_detections:
+                    detected_name = detection.get("detected_object_name", "").lower()
+                    confidence = detection.get("confidence", 0.0)
+                    
+                    # Simple name matching (can be improved with fuzzy matching if needed)
+                    if detected_name in obj_name or obj_name in detected_name:
+                        if confidence > best_confidence:
+                            best_match = detection
+                            best_confidence = confidence
+                
+                # Add bounding box information if found
+                if best_match:
+                    enhanced_obj["yolo_detection"] = {
+                        "bbox": best_match["bbox"],
+                        "confidence": best_match["confidence"],
+                        "detected_name": best_match["detected_object_name"]
+                    }
+                    log(f"Matched '{obj.get('object', '')}' with YOLO detection '{best_match['detected_object_name']}' (confidence: {best_confidence:.3f})")
+                else:
+                    enhanced_obj["yolo_detection"] = None
+                    log(f"No YOLO match found for '{obj.get('object', '')}'")
+                
+                enhanced_objects.append(enhanced_obj)
+            
+            # Also add any unmatched YOLO detections as additional objects
+            matched_detections = set()
+            for obj in enhanced_objects:
+                if obj.get("yolo_detection"):
+                    matched_detections.add(obj["yolo_detection"]["detected_name"])
+            
+            for detection in yolo_detections:
+                detected_name = detection["detected_object_name"]
+                if detected_name not in matched_detections:
+                    # Create a new object entry for unmatched YOLO detection
+                    additional_obj = {
+                        "object_id": len(enhanced_objects) + 1,
+                        "object": f"{detected_name} (YOLO-only detection)",
+                        "position": f"detected at bbox ({detection['bbox']['center_x']:.0f}, {detection['bbox']['center_y']:.0f})",
+                        "image_id": image_id,
+                        "yolo_detection": {
+                            "bbox": detection["bbox"],
+                            "confidence": detection["confidence"],
+                            "detected_name": detected_name
+                        }
+                    }
+                    enhanced_objects.append(additional_obj)
+                    log(f"Added YOLO-only detection: '{detected_name}' (confidence: {detection['confidence']:.3f})")
+            
+            enhanced_database[image_id] = enhanced_objects
+            
+        except Exception as e:
+            log(f"Error in YOLO detection for image {image_id}: {e}")
+            # Keep original objects without YOLO enhancement
+            enhanced_database[image_id] = objects
+    
+    total_enhanced = sum(len(objects) for objects in enhanced_database.values())
+    log(f"YOLO-World bounding box enhancement completed. Enhanced {total_enhanced} objects across {len(enhanced_database)} images")
+    
+    return enhanced_database
+
+# Function to export annotated images with bounding boxes
+@traceable(run_type="chain", metadata={"process": "image_annotation_export"})
+async def export_annotated_images(enhanced_database: Dict[int, List[Dict]], environment_images: List[str], output_dir: str) -> List[str]:
+    """Export environment images with bounding box annotations drawn on them"""
+    log("Exporting annotated images with bounding boxes...")
+    
+    annotated_image_paths = []
+    
+    # Ensure output directory exists
+    annotated_dir = os.path.join(output_dir, "annotated_images")
+    os.makedirs(annotated_dir, exist_ok=True)
+    
+    for image_id, objects in enhanced_database.items():
+        try:
+            # Convert base64 to image
+            image_data = base64.b64decode(environment_images[image_id])
+            image = cv2.imdecode(np.frombuffer(image_data, np.uint8), cv2.IMREAD_COLOR)
+            
+            if image is None:
+                log(f"Failed to decode image {image_id}")
+                continue
+            
+            # Draw bounding boxes and labels
+            for obj in objects:
+                yolo_detection = obj.get("yolo_detection")
+                if yolo_detection and yolo_detection.get("bbox"):
+                    bbox = yolo_detection["bbox"]
+                    confidence = yolo_detection["confidence"]
+                    detected_name = yolo_detection["detected_name"]
+                    
+                    # Extract coordinates
+                    x1, y1 = int(bbox["x1"]), int(bbox["y1"])
+                    x2, y2 = int(bbox["x2"]), int(bbox["y2"])
+                    
+                    # Draw bounding box
+                    color = (0, 255, 0)  # Green color
+                    thickness = 2
+                    cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
+                    
+                    # Draw label with confidence
+                    label = f"{detected_name}: {confidence:.2f}"
+                    label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
+                    
+                    # Draw label background
+                    cv2.rectangle(image, (x1, y1 - label_size[1] - 10), 
+                                (x1 + label_size[0], y1), color, -1)
+                    
+                    # Draw label text
+                    cv2.putText(image, label, (x1, y1 - 5), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            
+            # Save annotated image
+            output_path = os.path.join(annotated_dir, f"annotated_image_{image_id}.jpg")
+            cv2.imwrite(output_path, image)
+            annotated_image_paths.append(output_path)
+            
+            log(f"Saved annotated image {image_id} to {output_path}")
+            
+        except Exception as e:
+            log(f"Error annotating image {image_id}: {e}")
+            continue
+    
+    log(f"Exported {len(annotated_image_paths)} annotated images to {annotated_dir}")
+    return annotated_image_paths
 
 # Function to save object database to JSON file
 def save_object_database(object_db: Dict[int, List[Dict]], output_path: str) -> Optional[str]:
@@ -2493,6 +2832,19 @@ async def run_concurrent_tasks():
     physical_object_database = results.get("physical_result", {})
     enhanced_virtual_objects = results.get("virtual_result", [])
     
+    # Enhance physical object database with YOLO-World bounding boxes
+    if environment_image_base64_list and physical_object_database:
+        log("Enhancing physical object database with YOLO-World bounding boxes...")
+        try:
+            physical_object_database = await enhance_with_yolo_bboxes(
+                physical_object_database, 
+                environment_image_base64_list
+            )
+            log("YOLO-World bounding box enhancement completed successfully")
+        except Exception as e:
+            log(f"Error in YOLO-World enhancement: {e}")
+            log("Continuing with original object database without bounding boxes")
+    
     # Run proxy matching if both physical and virtual objects are available
     if environment_image_base64_list and haptic_annotation_json:
         log("Setting up proxy matching task")
@@ -2668,6 +3020,9 @@ async def run_concurrent_tasks():
         results["greeting_test_result"] = greeting_test_results
         results["relationship_rating_result"] = relationship_rating_results
         results["substrate_utilization_result"] = substrate_utilization_results
+    
+    # Store the enhanced physical object database in results
+    results["enhanced_physical_result"] = physical_object_database
     
     return results
 
@@ -3613,7 +3968,9 @@ try:
     # Process physical objects results if available
     if environment_image_base64_list:
         log("Processing completed physical object detection results")
-        physical_object_database = concurrent_results.get("physical_result", {})
+        # Use enhanced database with YOLO bounding boxes if available
+        physical_object_database = concurrent_results.get("enhanced_physical_result", 
+                                                         concurrent_results.get("physical_result", {}))
         
         # Save physical object database
         output_dir = os.path.join(script_dir, "output")
@@ -3624,11 +3981,24 @@ try:
         total_physical_objects = sum(len(objects) for objects in physical_object_database.values())
         log(f"Physical object recognition complete. Found {total_physical_objects} objects across {len(physical_object_database)} images.")
         
+        # Export annotated images with bounding boxes
+        annotated_image_paths = []
+        try:
+            annotated_image_paths = asyncio.run(export_annotated_images(
+                physical_object_database, 
+                environment_image_base64_list, 
+                output_dir
+            ))
+            log(f"Exported {len(annotated_image_paths)} annotated images")
+        except Exception as e:
+            log(f"Error exporting annotated images: {e}")
+        
         # Add to result
         result["physical_objects"] = {
             "count": total_physical_objects,
             "database_path": physical_saved_path,
-            "object_database": physical_object_database
+            "object_database": physical_object_database,
+            "annotated_images": annotated_image_paths
         }
     else:
         log("No environment images to process")
