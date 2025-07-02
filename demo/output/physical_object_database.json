@@ -7,117 +7,117 @@
       "image_id": 0,
       "yolo_detection": {
         "bbox": {
-          "x1": 45.83892822265625,
-          "y1": 20.2261962890625,
-          "x2": 815.198486328125,
-          "y2": 951.5709228515625,
-          "width": 769.3595581054688,
-          "height": 931.3447265625,
-          "center_x": 430.5187072753906,
-          "center_y": 485.8985595703125
+          "x1": 46.62908935546875,
+          "y1": 20.580963134765625,
+          "x2": 816.8665771484375,
+          "y2": 947.022705078125,
+          "width": 770.2374877929688,
+          "height": 926.4417724609375,
+          "center_x": 431.7478332519531,
+          "center_y": 483.80181884765625
         },
-        "confidence": 0.9713080525398254,
+        "confidence": 0.9578790068626404,
         "detected_name": "blue office chair with armrests"
       }
     },
     {
       "object_id": 2,
       "object": "black computer desk",
-      "position": "top right of the image",
+      "position": "top center of the image",
       "image_id": 0,
       "yolo_detection": {
         "bbox": {
-          "x1": 338.94952392578125,
+          "x1": 341.99078369140625,
           "y1": 0.0,
-          "x2": 1117.6689453125,
-          "y2": 378.2379150390625,
-          "width": 778.7194213867188,
-          "height": 378.2379150390625,
-          "center_x": 728.3092041015625,
-          "center_y": 189.11895751953125
+          "x2": 1122.5440673828125,
+          "y2": 374.71514892578125,
+          "width": 780.5532836914062,
+          "height": 374.71514892578125,
+          "center_x": 732.2674560546875,
+          "center_y": 187.35757446289062
         },
-        "confidence": 0.3758082389831543,
+        "confidence": 0.5092672109603882,
         "detected_name": "black computer desk"
       }
     },
     {
       "object_id": 3,
       "object": "black computer tower",
-      "position": "behind the chair, on the right side of the image",
+      "position": "top right of the image",
       "image_id": 0,
       "yolo_detection": {
         "bbox": {
-          "x1": 786.1461181640625,
-          "y1": 72.365234375,
-          "x2": 983.0675048828125,
-          "y2": 319.6748352050781,
-          "width": 196.92138671875,
-          "height": 247.30960083007812,
-          "center_x": 884.6068115234375,
-          "center_y": 196.02003479003906
+          "x1": 787.647216796875,
+          "y1": 74.48820495605469,
+          "x2": 982.6343383789062,
+          "y2": 318.6170654296875,
+          "width": 194.98712158203125,
+          "height": 244.1288604736328,
+          "center_x": 885.1407470703125,
+          "center_y": 196.55264282226562
         },
-        "confidence": 0.8398441672325134,
+        "confidence": 0.8836330771446228,
         "detected_name": "black computer tower"
       }
     },
     {
       "object_id": 4,
-      "object": "cardboard box with labels",
-      "position": "bottom right of the image",
+      "object": "cardboard boxes",
+      "position": "right side of the image",
       "image_id": 0,
       "yolo_detection": {
         "bbox": {
-          "x1": 971.0391235351562,
-          "y1": 38.11006164550781,
-          "x2": 1129.9295654296875,
-          "y2": 316.5029602050781,
-          "width": 158.89044189453125,
-          "height": 278.39288330078125,
-          "center_x": 1050.484375,
-          "center_y": 177.3065185546875
+          "x1": 972.4085693359375,
+          "y1": 35.69630432128906,
+          "x2": 1129.00634765625,
+          "y2": 314.368896484375,
+          "width": 156.5977783203125,
+          "height": 278.672607421875,
+          "center_x": 1050.70751953125,
+          "center_y": 175.0325927734375
         },
-        "confidence": 0.42957189679145813,
-        "detected_name": "cardboard box with labels"
+        "confidence": 0.11419612169265747,
+        "detected_name": "cardboard boxes"
       }
     },
     {
       "object_id": 5,
-      "object": "black cables on the floor",
+      "object": "black cables",
       "position": "bottom left of the image",
       "image_id": 0,
       "yolo_detection": {
         "bbox": {
-          "x1": 1.9609375,
-          "y1": 43.947998046875,
-          "x2": 1278.7213134765625,
-          "y2": 954.7470703125,
-          "width": 1276.7603759765625,
-          "height": 910.799072265625,
-          "center_x": 640.3411254882812,
-          "center_y": 499.3475341796875
+          "x1": 0.25955963134765625,
+          "y1": 675.873291015625,
+          "x2": 199.63754272460938,
+          "y2": 838.3421630859375,
+          "width": 199.37799072265625,
+          "height": 162.4688720703125,
+          "center_x": 99.94854736328125,
+          "center_y": 757.1077270507812
         },
-        "confidence": 0.5807570219039917,
-        "detected_name": "black cables on the floor"
+        "confidence": 0.22294341027736664,
+        "detected_name": "black cables"
       }
     },
     {
       "object_id": 6,
-      "object": "gray tiled floor",
-      "position": "covers the entire bottom of the image",
+      "object": "gray floor tiles",
+      "position": "entire bottom area of the image",
       "image_id": 0,
       "yolo_detection": {
         "bbox": {
-          "x1": 1.9609375,
-          "y1": 43.947998046875,
-          "x2": 1278.7213134765625,
-          "y2": 954.7470703125,
-          "width": 1276.7603759765625,
-          "height": 910.799072265625,
-          "center_x": 640.3411254882812,
-          "center_y": 499.3475341796875
+          "x1": 1.9691162109375,
+          "y1": 49.4095458984375,
+          "x2": 1279.089599609375,
+          "y2": 952.447998046875,
+          "width": 1277.1204833984375,
+          "height": 903.0384521484375,
+          "center_x": 640.5293579101562,
+          "center_y": 500.92877197265625
         },
-        "confidence": 0.42627447843551636,
-        "detected_name": "gray tiled floor"
+        "confidence": 0.3412565588951111,
+        "detected_name": "gray floor tiles"
       }
     }
   ]

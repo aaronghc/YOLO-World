@@ -6,11 +6,15 @@ import json
 import traceback
 import threading
 import queue
+import requests
 
 app = Flask(__name__)
 
 # Increase maximum content length to handle multiple images
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # Allow up to 100MB payloads
+
+# Store Quest connection info (will be set when Quest connects)
+quest_callback_url = None
 
 # Path to your Unity project's Python scripts
 SCRIPTS_PATH = r"C:\Users\aaron\Documents\GitHub\YOLO-World\YOLO-World\demo"
@@ -125,6 +129,66 @@ def run_python():
         print(f"Server error: {str(e)}")
         traceback.print_exc()
         return jsonify({'status': 'error', 'output': f"Server error: {str(e)}"}), 500
+
+
+@app.route('/register_quest', methods=['POST'])
+def register_quest():
+    """Register Quest's callback URL for receiving bounding box data"""
+    global quest_callback_url
+    try:
+        data = request.json
+        if not data or 'callback_url' not in data:
+            return jsonify({'status': 'error', 'message': 'callback_url required'}), 400
+        
+        quest_callback_url = data['callback_url']
+        print(f"Quest registered with callback URL: {quest_callback_url}")
+        
+        return jsonify({'status': 'success', 'message': 'Quest registered successfully'})
+    except Exception as e:
+        print(f"Error registering Quest: {str(e)}")
+        return jsonify({'status': 'error', 'message': f"Registration failed: {str(e)}"}), 500
+
+
+@app.route('/send_to_quest', methods=['POST'])
+def send_to_quest():
+    """Send bounding box data to Quest"""
+    global quest_callback_url
+    try:
+        if not quest_callback_url:
+            print("Quest callback URL not registered - cannot send data")
+            return jsonify({'status': 'error', 'message': 'Quest not registered'}), 400
+        
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+        
+        print(f"Sending bounding box data to Quest at: {quest_callback_url}")
+        print(f"Data contains {data.get('total_objects', 0)} objects")
+        print(f"Data contains data: {data}")
+        
+        # Forward the data to Quest
+        response = requests.post(
+            quest_callback_url,
+            json=data,
+            timeout=15  # 15 second timeout
+        )
+        
+        if response.status_code == 200:
+            print("Successfully sent bounding box data to Quest")
+            return jsonify({'status': 'success', 'message': 'Data sent to Quest successfully'})
+        else:
+            print(f"Failed to send data to Quest: HTTP {response.status_code}")
+            return jsonify({'status': 'error', 'message': f'Quest responded with {response.status_code}'}), 502
+            
+    except requests.exceptions.Timeout:
+        print("Timeout sending data to Quest")
+        return jsonify({'status': 'error', 'message': 'Timeout sending to Quest'}), 504
+    except requests.exceptions.ConnectionError:
+        print("Connection error sending data to Quest")
+        return jsonify({'status': 'error', 'message': 'Cannot connect to Quest'}), 502
+    except Exception as e:
+        print(f"Error sending data to Quest: {str(e)}")
+        return jsonify({'status': 'error', 'message': f"Send failed: {str(e)}"}), 500
 
 
 if __name__ == '__main__':

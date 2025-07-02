@@ -14,6 +14,7 @@ from langsmith import traceable
 from langsmith.wrappers import wrap_openai
 import uuid
 import difflib
+import requests
 
 # Add YOLO-World imports
 import torch
@@ -2835,6 +2836,14 @@ async def run_concurrent_tasks():
                 environment_image_base64_list
             )
             log("YOLO-World bounding box enhancement completed successfully")
+            
+            # Send bounding box data to Quest immediately after enhancement
+            try:
+                await send_bounding_box_to_quest(physical_object_database)
+            except Exception as bbox_send_error:
+                log(f"Warning: Failed to send bounding box data to Quest: {bbox_send_error}")
+                log("Continuing with normal processing...")
+                
         except Exception as e:
             log(f"Error in YOLO-World enhancement: {e}")
             log("Continuing with original object database without bounding boxes")
@@ -3851,6 +3860,63 @@ def correct_object_ids_in_relationship_results(relationship_results, physical_ob
         corrected_results.append(corrected_result)
     
     return corrected_results
+
+# Function to send bounding box data to Quest
+async def send_bounding_box_to_quest(enhanced_physical_database: Dict[int, List[Dict]]) -> bool:
+    """Send bounding box data to Quest via the local server"""
+    try:
+        log("Preparing bounding box data for Quest transmission...")
+        
+        # Extract only the essential bounding box data
+        bbox_data = {}
+        for image_id, objects in enhanced_physical_database.items():
+            bbox_data[str(image_id)] = []
+            for obj in objects:
+                yolo_detection = obj.get("yolo_detection")
+                if yolo_detection and yolo_detection.get("bbox"):
+                    bbox_info = {
+                        "object_id": obj.get("object_id"),
+                        "object": obj.get("object"),
+                        "position": obj.get("position"),
+                        "image_id": obj.get("image_id"),
+                        "yolo_detection": {
+                            "bbox": yolo_detection["bbox"],
+                            "confidence": yolo_detection["confidence"],
+                            "detected_name": yolo_detection["detected_name"]
+                        }
+                    }
+                    bbox_data[str(image_id)].append(bbox_info)
+        
+        total_objects = sum(len(objects) for objects in bbox_data.values())
+        log(f"Sending bounding box data for {total_objects} objects across {len(bbox_data)} images to Quest")
+        
+        # Prepare the payload for Quest
+        quest_payload = {
+            "action": "bounding_box_data",
+            "data": bbox_data,
+            "timestamp": str(uuid.uuid4()),
+            "total_objects": total_objects
+        }
+        
+        # Send to Quest via local server (assuming server runs on localhost:5000)
+        server_url = "http://localhost:5000/send_to_quest"
+        
+        response = requests.post(
+            server_url,
+            json=quest_payload,
+            timeout=10  # 10 second timeout
+        )
+        
+        if response.status_code == 200:
+            log("Successfully sent bounding box data to Quest")
+            return True
+        else:
+            log(f"Failed to send bounding box data to Quest: HTTP {response.status_code}")
+            return False
+            
+    except Exception as e:
+        log(f"Error sending bounding box data to Quest: {e}")
+        return False
 
 try:
     # Create a variable to store the processing results
