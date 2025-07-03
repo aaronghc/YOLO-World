@@ -45,11 +45,19 @@ class YOLOWorldDetector(YOLODetector):
 
         # self.bbox_head.num_classes = self.num_test_classes
         self.bbox_head.num_classes = txt_feats[0].shape[0]
-        results_list = self.bbox_head.predict(img_feats,
-                                              txt_feats,
-                                              txt_masks,
-                                              batch_data_samples,
-                                              rescale=rescale)
+        
+        # Check if we're using a segmentation head (doesn't accept txt_masks)
+        if hasattr(self.bbox_head, '__class__') and 'Seg' in self.bbox_head.__class__.__name__:
+            results_list = self.bbox_head.predict(img_feats,
+                                                  txt_feats,
+                                                  batch_data_samples,
+                                                  rescale=rescale)
+        else:
+            results_list = self.bbox_head.predict(img_feats,
+                                                  txt_feats,
+                                                  txt_masks,
+                                                  batch_data_samples,
+                                                  rescale=rescale)
 
         batch_data_samples = self.add_pred_to_datasample(
             batch_data_samples, results_list)

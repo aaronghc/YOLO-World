@@ -155,21 +155,24 @@ def initialize_yolo_model():
         test_cfg.test_dataloader.dataset.pipeline[0].type = 'LoadImageFromFile'  # type: ignore
         yolo_test_pipeline = Compose(test_cfg.test_dataloader.dataset.pipeline)  # type: ignore
         
-        log(f"YOLO-World model initialized successfully on device: {YOLO_DEVICE}")
+        log(f"YOLO-World segmentation model initialized successfully on device: {YOLO_DEVICE}")
+        log(f"Model type: {type(yolo_model).__name__}")
+        log(f"Model has reparameterize: {hasattr(yolo_model, 'reparameterize')}")
+        log(f"Model attributes: {[attr for attr in dir(yolo_model) if 'param' in attr.lower() or 'text' in attr.lower()]}")
         return yolo_model, yolo_test_pipeline
         
     except Exception as e:
         log(f"Error initializing YOLO-World model: {e}")
         return None, None
 
-# Function to run YOLO-World detection on an image
-def run_yolo_detection(image_base64: str, object_names: List[str], image_id: int) -> List[Dict]:
-    """Run YOLO-World detection on an image with specified object names"""
+# Function to run YOLO-World segmentation on an image
+def run_yolo_segmentation(image_base64: str, object_names: List[str], image_id: int) -> List[Dict]:
+    """Run YOLO-World segmentation on an image with specified object names"""
     try:
         # Initialize model if needed
         model, test_pipeline = initialize_yolo_model()
         if model is None or test_pipeline is None:
-            log(f"YOLO model not available for image {image_id}")
+            log(f"YOLO segmentation model not available for image {image_id}")
             return []
         
         # Convert base64 to temporary image file
@@ -181,49 +184,150 @@ def run_yolo_detection(image_base64: str, object_names: List[str], image_id: int
             temp_file.write(image_data)
         
         try:
-            # Prepare text prompts - format as expected by YOLO-World
-            texts = [[name.strip()] for name in object_names] + [[' ']]  # Add empty text as per image_demo.py
+            # Prepare text prompts - format as expected by YOLO-World segmentation
+            # For segmentation models, we need flattened strings, not nested lists
+            texts = [name.strip() for name in object_names] + [' ']  # Add empty text as per image_demo.py
+            log(f"Prepared text prompts for image {image_id}: {texts}")
             
-            # Reparameterize model for the new text prompts
-            if hasattr(model, 'reparameterize'):
-                model.reparameterize(texts)  # type: ignore
+            # For segmentation models, we should NOT use reparameterize as it causes txt_masks issues
+            # Instead, we'll pass texts directly in the data_samples
+            log(f"Skipping reparameterization for segmentation model to avoid txt_masks error")
+            
+            # Clear any cached text features to force fresh processing
+            if hasattr(model, 'text_feats'):
+                delattr(model, 'text_feats')
+            if hasattr(model, 'texts'):
+                delattr(model, 'texts')
             
             # Prepare data
+            log(f"Preparing data for image {image_id}")
             data_info = dict(img_id=0, img_path=temp_image_path, texts=texts)
-            data_info = test_pipeline(data_info)  # type: ignore
+            
+            try:
+                data_info = test_pipeline(data_info)  # type: ignore
+                log("Test pipeline completed successfully")
+                
+                # Ensure texts are properly attached to data_samples
+                if data_info and 'data_samples' in data_info and hasattr(data_info['data_samples'], 'texts'):
+                    log(f"Texts properly attached to data_samples: {data_info['data_samples'].texts}")
+                else:
+                    log("Warning: texts not found in data_samples, manually adding")
+                    if data_info and 'data_samples' in data_info:
+                        data_info['data_samples'].texts = texts
+                    
+            except Exception as pipeline_error:
+                log(f"Error in test pipeline: {pipeline_error}")
+                return []
             
             # Check if pipeline succeeded
             if data_info is None or 'inputs' not in data_info or 'data_samples' not in data_info:
-                log(f"Test pipeline failed for image {image_id}")
+                log(f"Test pipeline failed for image {image_id} - missing required keys")
+                log(f"Available keys: {list(data_info.keys()) if data_info else 'None'}")
                 return []
+            
+            # Get original image dimensions for mask processing
+            original_image = cv2.imread(temp_image_path)
+            original_height, original_width = original_image.shape[:2]
+            log(f"Original image dimensions: {original_width}x{original_height}")
                 
             data_batch = dict(inputs=data_info['inputs'].unsqueeze(0),
                             data_samples=[data_info['data_samples']])
+            log(f"Prepared data batch with input shape: {data_info['inputs'].shape}")
             
             # Run inference
-            with autocast(enabled=False), torch.no_grad():
-                output = model.test_step(data_batch)[0]  # type: ignore
-                pred_instances = output.pred_instances
-                pred_instances = pred_instances[pred_instances.scores.float() > YOLO_THRESHOLD]
+            try:
+                with autocast(enabled=False), torch.no_grad():
+                    log(f"Running inference for image {image_id} with {len(texts)} text prompts")
+                    output = model.test_step(data_batch)[0]  # type: ignore
+                    pred_instances = output.pred_instances
+                    log(f"Raw inference results: {len(pred_instances.scores)} detections")
+                    pred_instances = pred_instances[pred_instances.scores.float() > YOLO_THRESHOLD]
+                    log(f"Filtered results (threshold {YOLO_THRESHOLD}): {len(pred_instances.scores)} detections")
+            except Exception as inference_error:
+                log(f"Error during model inference for image {image_id}: {inference_error}")
+                log(f"Error type: {type(inference_error).__name__}")
+                import traceback
+                log(f"Traceback: {traceback.format_exc()}")
+                return []
             
             # Keep only top-k predictions
             if len(pred_instances.scores) > YOLO_TOPK:
                 indices = pred_instances.scores.float().topk(YOLO_TOPK)[1]
                 pred_instances = pred_instances[indices]
             
-            # Convert to numpy for easier processing
-            pred_instances = pred_instances.cpu().numpy()  # type: ignore
-            
-            # Extract bounding boxes and other info
+            # Extract detections with segmentation info
             detections = []
-            if len(pred_instances['bboxes']) > 0:  # type: ignore
-                for i in range(len(pred_instances['bboxes'])):  # type: ignore
-                    bbox = pred_instances['bboxes'][i]  # [x1, y1, x2, y2] # type: ignore
-                    class_id = pred_instances['labels'][i]  # type: ignore
-                    confidence = pred_instances['scores'][i]  # type: ignore
+            if len(pred_instances.bboxes) > 0:
+                # Convert to numpy for easier processing
+                bboxes = pred_instances.bboxes.cpu().numpy()
+                scores = pred_instances.scores.cpu().numpy()
+                labels = pred_instances.labels.cpu().numpy()
+                
+                # Extract masks if available - try different possible attribute names
+                masks = None
+                try:
+                    if hasattr(pred_instances, 'masks') and pred_instances.masks is not None:
+                        masks = pred_instances.masks.cpu().numpy()
+                        log(f"Found {len(masks)} segmentation masks for image {image_id}")
+                    elif hasattr(pred_instances, 'mask') and pred_instances.mask is not None:
+                        masks = pred_instances.mask.cpu().numpy()
+                        log(f"Found {len(masks)} segmentation masks for image {image_id}")
+                    elif hasattr(pred_instances, 'seg_masks') and pred_instances.seg_masks is not None:
+                        masks = pred_instances.seg_masks.cpu().numpy()
+                        log(f"Found {len(masks)} segmentation masks for image {image_id}")
+                    else:
+                        log(f"No segmentation masks found for image {image_id}, using bounding box centers")
+                        log(f"Available attributes: {[attr for attr in dir(pred_instances) if not attr.startswith('_')]}")
+                except Exception as mask_error:
+                    log(f"Error accessing masks for image {image_id}: {mask_error}")
+                    masks = None
+                
+                # Group detections by object name to keep only the highest confidence per object
+                object_detections = {}
+                
+                for i in range(len(bboxes)):
+                    bbox = bboxes[i]  # [x1, y1, x2, y2]
+                    class_id = labels[i]
+                    confidence = scores[i]
                     
                     # Get the detected object name
-                    detected_object_name = texts[class_id][0] if class_id < len(texts) else "unknown"
+                    detected_object_name = texts[class_id] if class_id < len(texts) else "unknown"
+                    
+                    # Calculate center point
+                    center_x = float((bbox[0] + bbox[2]) / 2)  # Default to bbox center
+                    center_y = float((bbox[1] + bbox[3]) / 2)
+                    mask_area = float((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))  # bbox area as fallback
+                    has_mask = False
+                    
+                    if masks is not None and i < len(masks):
+                        try:
+                            # Calculate center from segmentation mask
+                            mask = masks[i]
+                            
+                            # Ensure mask is 2D
+                            if len(mask.shape) > 2:
+                                mask = mask.squeeze()
+                            
+                            # Resize mask to original image dimensions if needed
+                            if mask.shape != (original_height, original_width):
+                                mask = cv2.resize(mask.astype(np.float32), (original_width, original_height))
+                            
+                            # Find mask contours and calculate centroid
+                            mask_binary = (mask > 0.5).astype(np.uint8)
+                            moments = cv2.moments(mask_binary)
+                            
+                            if moments['m00'] != 0:
+                                center_x = float(moments['m10'] / moments['m00'])
+                                center_y = float(moments['m01'] / moments['m00'])
+                                mask_area = float(np.sum(mask_binary))
+                                has_mask = True
+                                log(f"Calculated mask center for object {i}: ({center_x:.1f}, {center_y:.1f})")
+                            else:
+                                log(f"Empty mask for object {i}, using bbox center")
+                        
+                        except Exception as mask_calc_error:
+                            log(f"Error calculating mask center for object {i}: {mask_calc_error}")
+                            # Already have fallback values set above
                     
                     detection = {
                         "bbox": {
@@ -236,14 +340,38 @@ def run_yolo_detection(image_base64: str, object_names: List[str], image_id: int
                             "center_x": float((bbox[0] + bbox[2]) / 2),
                             "center_y": float((bbox[1] + bbox[3]) / 2)
                         },
+                        "segmentation": {
+                            "center_x": center_x,
+                            "center_y": center_y,
+                            "mask_area": mask_area,
+                            "has_mask": has_mask
+                        },
                         "detected_object_name": detected_object_name,
                         "confidence": float(confidence),
                         "class_id": int(class_id),
                         "image_id": image_id
                     }
-                    detections.append(detection)
+                    
+                    # Store the actual mask for visualization if available
+                    if has_mask and masks is not None and i < len(masks):
+                        detection["mask"] = masks[i]
+                    
+                    # Keep only the highest confidence detection for each object name
+                    if (detected_object_name not in object_detections or 
+                        confidence > object_detections[detected_object_name]["confidence"]):
+                        object_detections[detected_object_name] = detection
+                        log(f"Updated best detection for '{detected_object_name}': confidence {confidence:.3f}")
+                    else:
+                        log(f"Skipped lower confidence detection for '{detected_object_name}': confidence {confidence:.3f}")
+                
+                # Convert back to list, keeping only the highest confidence detection per object
+                detections = list(object_detections.values())
+                
+                log(f"After filtering for highest confidence per object: {len(detections)} unique objects")
+                for detection in detections:
+                    log(f"  - {detection['detected_object_name']}: {detection['confidence']:.3f} at center ({detection['segmentation']['center_x']:.1f}, {detection['segmentation']['center_y']:.1f})")
             
-            log(f"YOLO detection completed for image {image_id}: found {len(detections)} objects")
+            log(f"YOLO segmentation completed for image {image_id}: found {len(detections)} objects")
             return detections
             
         finally:
@@ -252,7 +380,7 @@ def run_yolo_detection(image_base64: str, object_names: List[str], image_id: int
                 os.unlink(temp_image_path)
                 
     except Exception as e:
-        log(f"Error in YOLO detection for image {image_id}: {e}")
+        log(f"Error in YOLO segmentation for image {image_id}: {e}")
         return []
 
 # Check if we're running from Unity or from the server
@@ -404,11 +532,11 @@ substrate_utilization_llm = ChatOpenAI(
 
 
 
-# YOLO-World configuration
-YOLO_CONFIG_PATH = os.path.join(os.path.dirname(script_dir), "configs/pretrain/yolo_world_v2_l_vlpan_bn_2e-3_100e_4x8gpus_obj365v1_goldg_train_lvis_minival.py")
-YOLO_WEIGHTS_PATH = os.path.join(os.path.dirname(script_dir), "weights/l_stage2-b3e3dc3f.pth")
+# YOLO-World segmentation configuration
+YOLO_CONFIG_PATH = os.path.join(os.path.dirname(script_dir), "configs/segmentation/yolo_world_seg_l_dual_vlpan_2e-4_80e_8gpus_seghead_finetune_lvis.py")
+YOLO_WEIGHTS_PATH = os.path.join(os.path.dirname(script_dir), "weights/yolo_world_seg_l_dual_vlpan_2e-4_80e_8gpus_seghead_finetune_lvis-5a642d30.pth")
 YOLO_DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
-YOLO_THRESHOLD = 0.05
+YOLO_THRESHOLD = 0.01
 YOLO_TOPK = 100
 
 # Initialize YOLO-World model (will be done lazily when needed)
@@ -898,22 +1026,22 @@ async def process_multiple_images(environment_images: List[str]) -> Dict[int, Li
             
     return object_database
 
-# Function to enhance physical object database with YOLO-World bounding boxes
-@traceable(run_type="chain", metadata={"process": "yolo_bounding_box_enhancement"})
-async def enhance_with_yolo_bboxes(object_database: Dict[int, List[Dict]], environment_images: List[str]) -> Dict[int, List[Dict]]:
-    """Enhance the physical object database with YOLO-World bounding box detections"""
-    log("Starting YOLO-World bounding box enhancement...")
+# Function to enhance physical object database with YOLO-World segmentation
+@traceable(run_type="chain", metadata={"process": "yolo_segmentation_enhancement"})
+async def enhance_with_yolo_segmentation(object_database: Dict[int, List[Dict]], environment_images: List[str]) -> Dict[int, List[Dict]]:
+    """Enhance the physical object database with YOLO-World segmentation detections"""
+    log("Starting YOLO-World segmentation enhancement...")
     
     enhanced_database = {}
     
     for image_id, objects in object_database.items():
-        log(f"Processing YOLO detection for image {image_id} with {len(objects)} objects")
+        log(f"Processing YOLO segmentation for image {image_id} with {len(objects)} objects")
         
         if len(objects) == 0:
             enhanced_database[image_id] = objects
             continue
         
-        # Extract object names for YOLO detection
+        # Extract object names for YOLO segmentation
         object_names = []
         for obj in objects:
             # Extract the main object name (before parentheses if any)
@@ -929,12 +1057,12 @@ async def enhance_with_yolo_bboxes(object_database: Dict[int, List[Dict]], envir
                 unique_names.append(name)
                 seen.add(name)
         
-        log(f"Running YOLO detection on image {image_id} for objects: {unique_names}")
+        log(f"Running YOLO segmentation on image {image_id} for objects: {unique_names}")
         
-        # Run YOLO detection
+        # Run YOLO segmentation
         try:
             image_base64 = environment_images[image_id]
-            yolo_detections = run_yolo_detection(image_base64, unique_names, image_id)
+            yolo_detections = run_yolo_segmentation(image_base64, unique_names, image_id)
             
             # Match YOLO detections to LLM-identified objects
             enhanced_objects = []
@@ -956,14 +1084,20 @@ async def enhance_with_yolo_bboxes(object_database: Dict[int, List[Dict]], envir
                             best_match = detection
                             best_confidence = confidence
                 
-                # Add bounding box information if found
+                # Add segmentation information if found
                 if best_match:
                     enhanced_obj["yolo_detection"] = {
                         "bbox": best_match["bbox"],
+                        "segmentation": best_match["segmentation"],
                         "confidence": best_match["confidence"],
                         "detected_name": best_match["detected_object_name"]
                     }
-                    log(f"Matched '{obj.get('object', '')}' with YOLO detection '{best_match['detected_object_name']}' (confidence: {best_confidence:.3f})")
+                    
+                    # Store mask for visualization if available
+                    if "mask" in best_match:
+                        enhanced_obj["mask"] = best_match["mask"]
+                    
+                    log(f"Matched '{obj.get('object', '')}' with YOLO segmentation '{best_match['detected_object_name']}' (confidence: {best_confidence:.3f}, center: {best_match['segmentation']['center_x']:.1f}, {best_match['segmentation']['center_y']:.1f})")
                 else:
                     enhanced_obj["yolo_detection"] = None
                     log(f"No YOLO match found for '{obj.get('object', '')}'")
@@ -980,37 +1114,46 @@ async def enhance_with_yolo_bboxes(object_database: Dict[int, List[Dict]], envir
                 detected_name = detection["detected_object_name"]
                 if detected_name not in matched_detections:
                     # Create a new object entry for unmatched YOLO detection
+                    seg_center_x = detection['segmentation']['center_x']
+                    seg_center_y = detection['segmentation']['center_y']
+                    
                     additional_obj = {
                         "object_id": len(enhanced_objects) + 1,
                         "object": f"{detected_name} (YOLO-only detection)",
-                        "position": f"detected at bbox ({detection['bbox']['center_x']:.0f}, {detection['bbox']['center_y']:.0f})",
+                        "position": f"detected at center ({seg_center_x:.0f}, {seg_center_y:.0f})",
                         "image_id": image_id,
                         "yolo_detection": {
                             "bbox": detection["bbox"],
+                            "segmentation": detection["segmentation"],
                             "confidence": detection["confidence"],
                             "detected_name": detected_name
                         }
                     }
+                    
+                    # Store mask for visualization if available
+                    if "mask" in detection:
+                        additional_obj["mask"] = detection["mask"]
+                    
                     enhanced_objects.append(additional_obj)
-                    log(f"Added YOLO-only detection: '{detected_name}' (confidence: {detection['confidence']:.3f})")
+                    log(f"Added YOLO-only detection: '{detected_name}' (confidence: {detection['confidence']:.3f}, center: {seg_center_x:.1f}, {seg_center_y:.1f})")
             
             enhanced_database[image_id] = enhanced_objects
             
         except Exception as e:
-            log(f"Error in YOLO detection for image {image_id}: {e}")
+            log(f"Error in YOLO segmentation for image {image_id}: {e}")
             # Keep original objects without YOLO enhancement
             enhanced_database[image_id] = objects
     
     total_enhanced = sum(len(objects) for objects in enhanced_database.values())
-    log(f"YOLO-World bounding box enhancement completed. Enhanced {total_enhanced} objects across {len(enhanced_database)} images")
+    log(f"YOLO-World segmentation enhancement completed. Enhanced {total_enhanced} objects across {len(enhanced_database)} images")
     
     return enhanced_database
 
-# Function to export annotated images with bounding boxes
+# Function to export annotated images with segmentation masks
 @traceable(run_type="chain", metadata={"process": "image_annotation_export"})
 async def export_annotated_images(enhanced_database: Dict[int, List[Dict]], environment_images: List[str], output_dir: str) -> List[str]:
-    """Export environment images with bounding box annotations drawn on them"""
-    log("Exporting annotated images with bounding boxes...")
+    """Export environment images with segmentation masks and center points drawn on them"""
+    log("Exporting annotated images with segmentation masks...")
     
     annotated_image_paths = []
     
@@ -1028,34 +1171,77 @@ async def export_annotated_images(enhanced_database: Dict[int, List[Dict]], envi
                 log(f"Failed to decode image {image_id}")
                 continue
             
-            # Draw bounding boxes and labels
+            # Create a copy for overlay
+            overlay = image.copy()
+            
+            # Draw segmentation masks and center points
             for obj in objects:
                 yolo_detection = obj.get("yolo_detection")
-                if yolo_detection and yolo_detection.get("bbox"):
-                    bbox = yolo_detection["bbox"]
+                if yolo_detection and yolo_detection.get("segmentation"):
+                    segmentation = yolo_detection["segmentation"]
                     confidence = yolo_detection["confidence"]
                     detected_name = yolo_detection["detected_name"]
                     
-                    # Extract coordinates
-                    x1, y1 = int(bbox["x1"]), int(bbox["y1"])
-                    x2, y2 = int(bbox["x2"]), int(bbox["y2"])
+                    # Extract center point
+                    center_x = int(segmentation["center_x"])
+                    center_y = int(segmentation["center_y"])
                     
-                    # Draw bounding box
-                    color = (0, 255, 0)  # Green color
-                    thickness = 2
-                    cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
+                    # Draw segmentation mask if available
+                    if "mask" in obj and obj["mask"] is not None:
+                        mask = obj["mask"]
+                        
+                        # Resize mask to image dimensions if needed
+                        if mask.shape != image.shape[:2]:
+                            mask = cv2.resize(mask.astype(np.uint8), (image.shape[1], image.shape[0]))
+                        
+                        # Create colored mask
+                        mask_binary = (mask > 0.5).astype(np.uint8)
+                        
+                        # Generate a unique color for each object
+                        color = (
+                            int((hash(detected_name) % 255)),
+                            int((hash(detected_name) * 2) % 255),
+                            int((hash(detected_name) * 3) % 255)
+                        )
+                        
+                        # Apply colored mask to overlay
+                        overlay[mask_binary > 0] = color
+                    else:
+                        # Fallback: draw bounding box if no mask available
+                        bbox = yolo_detection.get("bbox")
+                        if bbox:
+                            x1, y1 = int(bbox["x1"]), int(bbox["y1"])
+                            x2, y2 = int(bbox["x2"]), int(bbox["y2"])
+                            
+                            # Draw bounding box
+                            color = (0, 255, 0)  # Green color
+                            thickness = 2
+                            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness)
                     
-                    # Draw label with confidence
+                    # Draw center point
+                    cv2.circle(image, (center_x, center_y), 8, (0, 0, 255), -1)  # Red filled circle
+                    cv2.circle(image, (center_x, center_y), 10, (255, 255, 255), 2)  # White border
+                    
+                    # Draw label with confidence near center point
                     label = f"{detected_name}: {confidence:.2f}"
                     label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
                     
+                    # Position label above center point
+                    label_x = max(0, center_x - label_size[0] // 2)
+                    label_y = max(label_size[1] + 5, center_y - 15)
+                    
                     # Draw label background
-                    cv2.rectangle(image, (x1, y1 - label_size[1] - 10), 
-                                (x1 + label_size[0], y1), color, -1)
+                    cv2.rectangle(image, (label_x - 2, label_y - label_size[1] - 2), 
+                                (label_x + label_size[0] + 2, label_y + 2), (0, 0, 0), -1)
                     
                     # Draw label text
-                    cv2.putText(image, label, (x1, y1 - 5), 
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(image, label, (label_x, label_y), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+            # Blend overlay with original image for semi-transparent masks
+            if len([obj for obj in objects if obj.get("yolo_detection") and "mask" in obj]) > 0:
+                alpha = 0.3  # Transparency factor
+                image = cv2.addWeighted(image, 1 - alpha, overlay, alpha, 0)
             
             # Save annotated image
             output_path = os.path.join(annotated_dir, f"annotated_image_{image_id}.jpg")
@@ -2827,26 +3013,26 @@ async def run_concurrent_tasks():
     physical_object_database = results.get("physical_result", {})
     enhanced_virtual_objects = results.get("virtual_result", [])
     
-    # Enhance physical object database with YOLO-World bounding boxes
+    # Enhance physical object database with YOLO-World segmentation
     if environment_image_base64_list and physical_object_database:
-        log("Enhancing physical object database with YOLO-World bounding boxes...")
+        log("Enhancing physical object database with YOLO-World segmentation...")
         try:
-            physical_object_database = await enhance_with_yolo_bboxes(
+            physical_object_database = await enhance_with_yolo_segmentation(
                 physical_object_database, 
                 environment_image_base64_list
             )
-            log("YOLO-World bounding box enhancement completed successfully")
+            log("YOLO-World segmentation enhancement completed successfully")
             
-            # Send bounding box data to Quest immediately after enhancement
+            # Send segmentation center point data to Quest immediately after enhancement
             try:
-                await send_bounding_box_to_quest(physical_object_database)
-            except Exception as bbox_send_error:
-                log(f"Warning: Failed to send bounding box data to Quest: {bbox_send_error}")
+                await send_segmentation_data_to_quest(physical_object_database)
+            except Exception as segmentation_send_error:
+                log(f"Warning: Failed to send segmentation data to Quest: {segmentation_send_error}")
                 log("Continuing with normal processing...")
                 
         except Exception as e:
             log(f"Error in YOLO-World enhancement: {e}")
-            log("Continuing with original object database without bounding boxes")
+            log("Continuing with original object database without segmentation")
     
     # Run proxy matching if both physical and virtual objects are available and proxy matching is enabled
     if environment_image_base64_list and haptic_annotation_json and ENABLE_PROXY_MATCHING:
@@ -3861,41 +4047,48 @@ def correct_object_ids_in_relationship_results(relationship_results, physical_ob
     
     return corrected_results
 
-# Function to send bounding box data to Quest
-async def send_bounding_box_to_quest(enhanced_physical_database: Dict[int, List[Dict]]) -> bool:
-    """Send bounding box data to Quest via the local server"""
+# Function to send segmentation center point data to Quest
+async def send_segmentation_data_to_quest(enhanced_physical_database: Dict[int, List[Dict]]) -> bool:
+    """Send segmentation center point data to Quest via the local server"""
     try:
-        log("Preparing bounding box data for Quest transmission...")
+        log("Preparing segmentation center point data for Quest transmission...")
         
-        # Extract only the essential bounding box data
-        bbox_data = {}
+        # Extract only the essential segmentation center point data
+        segmentation_data = {}
         for image_id, objects in enhanced_physical_database.items():
-            bbox_data[str(image_id)] = []
+            segmentation_data[str(image_id)] = []
             for obj in objects:
                 yolo_detection = obj.get("yolo_detection")
-                if yolo_detection and yolo_detection.get("bbox"):
-                    bbox_info = {
+                if yolo_detection and yolo_detection.get("segmentation"):
+                    segmentation_info = {
                         "object_id": obj.get("object_id"),
                         "object": obj.get("object"),
                         "position": obj.get("position"),
                         "image_id": obj.get("image_id"),
                         "yolo_detection": {
-                            "bbox": yolo_detection["bbox"],
+                            "segmentation": {
+                                "center_x": yolo_detection["segmentation"]["center_x"],
+                                "center_y": yolo_detection["segmentation"]["center_y"],
+                                "mask_area": yolo_detection["segmentation"]["mask_area"],
+                                "has_mask": yolo_detection["segmentation"]["has_mask"]
+                            },
+                            "bbox": yolo_detection["bbox"],  # Include bbox as fallback
                             "confidence": yolo_detection["confidence"],
                             "detected_name": yolo_detection["detected_name"]
                         }
                     }
-                    bbox_data[str(image_id)].append(bbox_info)
+                    segmentation_data[str(image_id)].append(segmentation_info)
         
-        total_objects = sum(len(objects) for objects in bbox_data.values())
-        log(f"Sending bounding box data for {total_objects} objects across {len(bbox_data)} images to Quest")
+        total_objects = sum(len(objects) for objects in segmentation_data.values())
+        log(f"Sending segmentation center point data for {total_objects} objects across {len(segmentation_data)} images to Quest")
         
         # Prepare the payload for Quest
         quest_payload = {
-            "action": "bounding_box_data",
-            "data": bbox_data,
+            "action": "segmentation_center_points",
+            "data": segmentation_data,
             "timestamp": str(uuid.uuid4()),
-            "total_objects": total_objects
+            "total_objects": total_objects,
+            "description": "Object segmentation center points for haptic feedback positioning"
         }
         
         # Send to Quest via local server (assuming server runs on localhost:5000)
@@ -3908,14 +4101,14 @@ async def send_bounding_box_to_quest(enhanced_physical_database: Dict[int, List[
         )
         
         if response.status_code == 200:
-            log("Successfully sent bounding box data to Quest")
+            log("Successfully sent segmentation center point data to Quest")
             return True
         else:
-            log(f"Failed to send bounding box data to Quest: HTTP {response.status_code}")
+            log(f"Failed to send segmentation data to Quest: HTTP {response.status_code}")
             return False
             
     except Exception as e:
-        log(f"Error sending bounding box data to Quest: {e}")
+        log(f"Error sending segmentation data to Quest: {e}")
         return False
 
 try:
